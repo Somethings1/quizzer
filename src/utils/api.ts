@@ -23,7 +23,7 @@ Bạn là một giáo viên đại học kỳ cựu, chuyên ra đề thi khó v
 
     Đọc kỹ nội dung trong file, chia nó thành các phần hoặc chủ đề chính.
 
-    Dựa trên toàn bộ nội dung, tạo ra 30 câu hỏi trắc nghiệm.
+    Dựa trên toàn bộ nội dung, tạo ra CHÍNH XÁC 30 câu hỏi trắc nghiệm.
 
 Yêu cầu:
 

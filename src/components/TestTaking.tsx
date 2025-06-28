@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { StoredTest } from '../db/db';
-import { Radio, Button, Checkbox, Typography, Space, Row, Col } from 'antd';
+import {
+    Radio,
+    Button,
+    Checkbox,
+    Typography,
+    Space,
+    Row,
+    Col,
+} from 'antd';
 
 const { Title, Paragraph } = Typography;
 
@@ -13,34 +21,38 @@ const TestTaking: React.FC<Props> = ({ test, onFinish }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<number, string[]>>({});
     const [reviewMarks, setReviewMarks] = useState<Record<number, boolean>>({});
+    const [shuffledAnswers, setShuffledAnswers] = useState<Record<number, typeof test.questions[0]['answer']>>({});
     const [startTime] = useState(Date.now());
+    const bufferRef = useRef('');
     const spacePressedRef = useRef(false);
-    const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
+    const bufferTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const q = test.questions[currentIndex];
     const totalCorrect = q.answer.filter((a) => a.correct).length;
+    const choices = shuffledAnswers[currentIndex] || [];
+
+    useEffect(() => {
+        if (!shuffledAnswers[currentIndex]) {
+            const shuffled = [...q.answer].sort(() => Math.random() - 0.5);
+            setShuffledAnswers((prev) => ({ ...prev, [currentIndex]: shuffled }));
+        }
+    }, [currentIndex, q.answer, shuffledAnswers]);
 
     const toggleChoice = (choice: string) => {
         setAnswers((prev) => {
             const prevChoices = prev[currentIndex] || [];
-            const exists = prevChoices.includes(choice);
 
             if (totalCorrect === 1) {
                 return { ...prev, [currentIndex]: [choice] };
             }
 
+            const exists = prevChoices.includes(choice);
             const updated = exists
                 ? prevChoices.filter((c) => c !== choice)
                 : [...prevChoices, choice];
 
             return { ...prev, [currentIndex]: updated };
         });
-    };
-
-    const jumpToQuestion = (number: number) => {
-        if (number >= 1 && number <= test.questions.length) {
-            setCurrentIndex(number - 1);
-        }
     };
 
     const handleSubmit = async () => {
@@ -69,22 +81,19 @@ const TestTaking: React.FC<Props> = ({ test, onFinish }) => {
     };
 
     useEffect(() => {
-        let buffer = '';
-        let bufferTimer: NodeJS.Timeout | null = null;
-
         const handleKeyDown = (e: KeyboardEvent) => {
             const isDigit = /^[0-9]$/.test(e.key);
 
             if (spacePressedRef.current) {
                 if (isDigit) {
-                    buffer += e.key;
-                    if (bufferTimer) clearTimeout(bufferTimer);
-                    bufferTimer = setTimeout(() => {
-                        const target = parseInt(buffer, 10);
-                        if (!isNaN(target) && target >= 1 && target <= test.questions.length) {
-                            setCurrentIndex(target - 1);
+                    bufferRef.current += e.key;
+                    if (bufferTimerRef.current) clearTimeout(bufferTimerRef.current);
+                    bufferTimerRef.current = setTimeout(() => {
+                        const jumpTo = parseInt(bufferRef.current, 10);
+                        if (!isNaN(jumpTo) && jumpTo >= 1 && jumpTo <= test.questions.length) {
+                            setCurrentIndex(jumpTo - 1);
                         }
-                        buffer = '';
+                        bufferRef.current = '';
                         spacePressedRef.current = false;
                     }, 500);
                 }
@@ -93,15 +102,13 @@ const TestTaking: React.FC<Props> = ({ test, onFinish }) => {
 
             if (e.key === 'ArrowUp') {
                 spacePressedRef.current = true;
-                buffer = '';
+                bufferRef.current = '';
                 return;
             }
 
             if (isDigit) {
-                const index = parseInt(e.key, 10) - 1;
-                if (q.answer[index]) {
-                    toggleChoice(q.answer[index].content);
-                }
+                const idx = parseInt(e.key, 10) - 1;
+                if (choices[idx]) toggleChoice(choices[idx].content);
             }
 
             if (e.key === 'ArrowLeft') {
@@ -113,21 +120,9 @@ const TestTaking: React.FC<Props> = ({ test, onFinish }) => {
             }
         };
 
-        const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.key === 'ArrowUp') {
-                // Let buffer expire
-            }
-        };
-
         window.addEventListener('keydown', handleKeyDown);
-        window.addEventListener('keyup', handleKeyUp);
-
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-            window.removeEventListener('keyup', handleKeyUp);
-        };
-    }, [q, currentIndex]);
-
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [choices, test.questions.length]);
 
     return (
         <Row style={{ width: '100%', height: '100vh', background: '#f9f9f9' }}>
@@ -166,7 +161,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish }) => {
                         }
                     >
                         <Space direction="vertical" size="large">
-                            {q.answer.map((a, idx) => (
+                            {choices.map((a, idx) => (
                                 <Radio key={idx} value={a.content}>
                                     {idx + 1}. {a.content}
                                 </Radio>
@@ -181,7 +176,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish }) => {
                         }
                     >
                         <Space direction="vertical" size="large">
-                            {q.answer.map((a, idx) => (
+                            {choices.map((a, idx) => (
                                 <Checkbox key={idx} value={a.content}>
                                     {idx + 1}. {a.content}
                                 </Checkbox>
