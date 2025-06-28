@@ -27,6 +27,7 @@ const App = () => {
       />
       <MainContent
         selectedTestId={selectedTestId}
+        setSelectedTestId={setSelectedTestId}
         session={session}
         setSession={setSession}
         onAddTest={() => setShowAddModal(true)}

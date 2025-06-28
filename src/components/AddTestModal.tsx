@@ -97,6 +97,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                 createdAt: Date.now(),
                 questions: parsed,
                 attempts: [],
+                fileContent: fileContent || undefined,
             });
 
             message.success('Test created!');

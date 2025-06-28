@@ -13,6 +13,7 @@ export interface StoredTest {
     selectedAnswers: Record<number, string[]>;
     score: number;
   }[];
+  fileContent?: string;
 }
 
 class QuizDB extends Dexie {

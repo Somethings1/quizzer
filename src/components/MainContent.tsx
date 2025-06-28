@@ -11,12 +11,13 @@ const { Title, Paragraph } = Typography;
 
 interface Props {
     selectedTestId: string | null;
+    setSelectedTestId: (s: string) => void;
     session: TestSession | null;
     setSession: (s: TestSession | null) => void;
     onAddTest: () => void;
 }
 
-const MainContent: React.FC<Props> = ({ selectedTestId, session, setSession, onAddTest }) => {
+const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, session, setSession, onAddTest }) => {
     const [test, setTest] = useState<StoredTest | null>(null);
 
     useEffect(() => {
@@ -26,6 +27,10 @@ const MainContent: React.FC<Props> = ({ selectedTestId, session, setSession, onA
         }
         db.tests.get(selectedTestId).then(setTest);
     }, [selectedTestId]);
+
+    const handleNewTestCreated = (id: string) => {
+        setSelectedTestId(id);
+    }
 
     if (!test) {
         return (
@@ -75,7 +80,7 @@ const MainContent: React.FC<Props> = ({ selectedTestId, session, setSession, onA
         );
     }
 
-    return <TestSummary test={test} setSession={setSession} />;
+    return <TestSummary test={test} onNewTestCreated={handleNewTestCreated} />;
 };
 
 export default MainContent;
