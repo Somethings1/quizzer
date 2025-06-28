@@ -80,7 +80,7 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
         );
     }
 
-    return <TestSummary test={test} onNewTestCreated={handleNewTestCreated} />;
+    return <TestSummary test={test} setSession={setSession} onNewTestCreated={handleNewTestCreated} />;
 };
 
 export default MainContent;

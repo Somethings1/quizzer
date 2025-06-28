@@ -5,7 +5,7 @@ import { v4 as uuidv4, v4 } from 'uuid';
 import shuffle from 'lodash/shuffle';
 import { extractJson, uploadToGeminiAndGenerateQuiz } from '../utils/api';
 import { fixSmartQuotes } from '../utils/repairJson';
-import { QuizQuestion } from '../types';
+import { QuizQuestion, TestSession } from '../types';
 import { useState } from 'react';
 import JsonFixerModal from './JsonFixerModal';
 
@@ -13,10 +13,11 @@ const { Title, Paragraph, Text } = Typography;
 
 interface Props {
     test: StoredTest;
+    setSession: (s: TestSession) => void;
     onNewTestCreated: (s: string) => void;
 }
 
-const TestSummary: React.FC<Props> = ({ test, onNewTestCreated }) => {
+const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated }) => {
     const latest = test.attempts[test.attempts.length - 1];
     if (!latest) return null;
 
@@ -114,10 +115,10 @@ const TestSummary: React.FC<Props> = ({ test, onNewTestCreated }) => {
                 <Divider />
 
                 <Space wrap style={{ marginTop: 24 }}>
-                    <Button size="large" onClick={() => onNewTestCreated(test.id)}>
+                    <Button size="large" onClick={() => setSession({testId: test.id, mode: 'taking'})}>
                         Retake
                     </Button>
-                    <Button size="large" onClick={() => onNewTestCreated(test.id)}>
+                    <Button size="large" onClick={() => setSession({testId: test.id, mode: 'reviewing'})}>
                         Review
                     </Button>
                     <Button size="large" loading={isLoading} onClick={handleNewTestSameFile}>
