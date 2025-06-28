@@ -21,7 +21,7 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
     };
 
     return (
-        <Layout.Sider width={250} style={{ background: '#fff' }}>
+        <Layout.Sider width={250} style={{ minWidth: '250px', maxWidth: '250px', background: '#fff' }}>
             <div
                 style={{
                     display: 'flex',

@@ -23,11 +23,36 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
         const picked = userAnswer.includes(a.content);
         const correct = a.correct;
 
-        if (correct && picked) return <Tag color="green">✓ {a.content}</Tag>;
-        if (correct && !picked) return <Tag color="blue">+ {a.content}</Tag>;
-        if (!correct && picked) return <Tag color="red">✗ {a.content}</Tag>;
-        return <Tag>{a.content}</Tag>;
+        let color: string | undefined;
+        let prefix = '';
+
+        if (correct && picked) {
+            color = 'green';
+            prefix = '✓';
+        } else if (correct && !picked) {
+            color = 'blue';
+            prefix = '+';
+        } else if (!correct && picked) {
+            color = 'red';
+            prefix = '✗';
+        }
+
+        return (
+            <Tag
+                color={color}
+                style={{
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                    maxWidth: '100%',
+                    display: 'inline-block', // giữ cho nó behave đúng trong flex
+                }}
+            >
+                {prefix && <strong style={{ marginRight: 4 }}>{prefix}</strong>}
+                {a.content}
+            </Tag>
+        );
     };
+
 
     const total = test.questions.length;
     const buffer = useRef('');
@@ -72,9 +97,9 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
 
 
     return (
-        <Row style={{ height: '100vh', width: '100%', background: '#fafafa' }}>
+        <Row style={{height: '100vh', background: '#fafafa' }}>
             {/* Main Content */}
-            <Col flex="3" style={{ padding: '64px 48px', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+            <Col flex="3" style={{ padding: '64px 48px', background: '#fff', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                 <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
                     <Title level={3} style={{ margin: 0 }}>
                         Question {currentIndex + 1}
