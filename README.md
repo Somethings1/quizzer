@@ -10,3 +10,9 @@ cd quizzer
 npm install --legacy-peer-deps
 npm run dev
 ```
+
+# Instruction
+## Use keyboard to navigate
+Use 1-9 to select answer. Left and right arrow to go to prev and next question.
+Press UpArrow and then quickly press numbers to go to any question. For example,
+UpArrow+1+2 => Go to question 12.
