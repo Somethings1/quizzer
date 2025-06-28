@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Button, Typography, Row, Col, Space, Tag } from 'antd';
 import { StoredTest } from '../db/db';
 
@@ -12,6 +12,7 @@ interface Props {
 const TestReview: React.FC<Props> = ({ test, onBack }) => {
     const latest = test.attempts[test.attempts.length - 1];
     const [currentIndex, setCurrentIndex] = useState(0);
+
     const q = test.questions[currentIndex];
     const userAnswer = latest.selectedAnswers[currentIndex] || [];
 
@@ -28,45 +29,66 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
         return <Tag>{a.content}</Tag>;
     };
 
-    const questionGrid = (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 4 }}>
-            {test.questions.map((_, idx) => {
-                const user = latest.selectedAnswers[idx] || [];
-                const correct = test.questions[idx].answer.filter((a) => a.correct).map(a => a.content).sort();
-                const correctMatch = JSON.stringify(user.sort()) === JSON.stringify(correct);
-                return (
-                    <div
-                        key={idx}
-                        style={{
-                            background: correctMatch ? 'green' : 'red',
-                            width: 40,
-                            height: 40,
-                            textAlign: 'center',
-                            lineHeight: '40px',
-                            cursor: 'pointer',
-                            borderRadius: 4,
-                            color: '#fff'
-                        }}
-                        onClick={() => setCurrentIndex(idx)}
-                    >
-                        {idx + 1}
-                    </div>
-                );
-            })}
-        </div>
-    );
+    const total = test.questions.length;
+    const buffer = useRef('');
+    const jumping = useRef(false);
+    const timeout = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (!jumping.current) {
+                if (e.key === 'ArrowRight') {
+                    setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1));
+                } else if (e.key === 'ArrowLeft') {
+                    setCurrentIndex((i) => Math.max(0, i - 1));
+                } else if (e.key === 'ArrowUp') {
+                    buffer.current = '';
+                    jumping.current = true;
+                }
+            } else {
+                if (/^\d$/.test(e.key)) {
+                    buffer.current += e.key;
+
+                    if (timeout.current) clearTimeout(timeout.current);
+                    timeout.current = setTimeout(() => {
+                        const target = parseInt(buffer.current, 10) - 1;
+                        if (!isNaN(target) && target >= 0 && target < test.questions.length) {
+                            setCurrentIndex(target);
+                        }
+                        buffer.current = '';
+                        jumping.current = false;
+                    }, 500);
+                } else if (e.key === 'Escape') {
+                    buffer.current = '';
+                    jumping.current = false;
+                    if (timeout.current) clearTimeout(timeout.current);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [test.questions.length]);
+
 
     return (
-        <Row style={{ height: '100vh', display: 'flex', width: '100%' }}>
-            <Col flex="3" style={{ padding: 32, display: 'flex', flexDirection: 'column' }}>
-                <Title level={4}>Question {currentIndex + 1}</Title>
-                <Paragraph>{q.statement}</Paragraph>
+        <Row style={{ height: '100vh', width: '100%', background: '#fafafa' }}>
+            {/* Main Content */}
+            <Col flex="3" style={{ padding: '64px 48px', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+                <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
+                    <Title level={3} style={{ margin: 0 }}>
+                        Question {currentIndex + 1}
+                    </Title>
+                    <Button onClick={onBack}>Back to Summary</Button>
+                </Row>
+
+                <Paragraph style={{ fontSize: 18 }}>{q.statement}</Paragraph>
 
                 <Paragraph type="secondary" style={{ fontStyle: 'italic' }}>
                     Choose {correctAnswers.length} answer{correctAnswers.length > 1 ? 's' : ''}
                 </Paragraph>
 
-                <Space direction="vertical" size="middle">
+                <Space direction="vertical" size="middle" style={{ marginTop: 16 }}>
                     {q.answer.map((a, idx) => (
                         <div key={idx}>
                             {getAnswerTag(a)}
@@ -76,7 +98,8 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                         </div>
                     ))}
                 </Space>
-                <div style={{ marginTop: 24 }}>
+
+                <div style={{ marginTop: 'auto', paddingTop: 32 }}>
                     <Space>
                         <Button
                             disabled={currentIndex === 0}
@@ -85,31 +108,56 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                             Previous
                         </Button>
                         <Button
-                            disabled={currentIndex === test.questions.length - 1}
-                            onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))}
+                            disabled={currentIndex === total - 1}
+                            onClick={() => setCurrentIndex((i) => Math.min(total - 1, i + 1))}
                         >
                             Next
                         </Button>
                     </Space>
                 </div>
-
-                <Button style={{ marginTop: 'auto' }} onClick={onBack}>
-                    Back to Summary
-                </Button>
             </Col>
 
+            {/* Sidebar */}
             <Col
                 flex="1"
                 style={{
-                    background: '#f0f2f5',
-                    padding: 24,
+                    background: '#f5f5f7',
+                    padding: 32,
                     borderLeft: '1px solid #ddd',
-                    height: '100vh',
                     overflowY: 'auto',
                 }}
             >
-                <Title level={5}>Questions</Title>
-                {questionGrid}
+                <Title level={5}>All Questions</Title>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 6 }}>
+                    {test.questions.map((_, idx) => {
+                        const user = latest.selectedAnswers[idx] || [];
+                        const correct = test.questions[idx].answer.filter((a) => a.correct).map(a => a.content).sort();
+                        const correctMatch = JSON.stringify(user.sort()) === JSON.stringify(correct);
+
+                        return (
+                            <div
+                                key={idx}
+                                onClick={() => setCurrentIndex(idx)}
+                                style={{
+                                    width: 40,
+                                    height: 40,
+                                    background: correctMatch ? '#52c41a' : '#ff4d4f',
+                                    color: '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderRadius: 6,
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                    border: currentIndex === idx ? '2px solid #000' : '2px solid transparent',
+                                    boxSizing: 'border-box',
+                                }}
+                            >
+                                {idx + 1}
+                            </div>
+                        );
+                    })}
+                </div>
             </Col>
         </Row>
     );
