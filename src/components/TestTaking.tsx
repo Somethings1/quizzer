@@ -111,6 +111,14 @@ const TestTaking: React.FC<Props> = ({ test, onFinish }) => {
                 if (choices[idx]) toggleChoice(choices[idx].content);
             }
 
+            if (e.key === '`') {
+                setReviewMarks((prev) => ({
+                    ...prev,
+                    [currentIndex]: !prev[currentIndex],
+                }));
+                return;
+            }
+
             if (e.key === 'ArrowLeft') {
                 setCurrentIndex((i) => Math.max(0, i - 1));
             }
