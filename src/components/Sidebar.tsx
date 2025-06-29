@@ -6,6 +6,7 @@ import {
     Button,
     message,
     Dropdown,
+    Input,
     MenuProps,
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -23,6 +24,8 @@ interface Props {
 const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
     const tests = useLiveQuery(() => db.tests.orderBy('createdAt').reverse().toArray(), []) ?? [];
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; test: StoredTest } | null>(null);
+    const [renamingId, setRenamingId] = useState<string | null>(null);
+    const [renameText, setRenameText] = useState('');
     const containerRef = useRef<HTMLDivElement>(null);
 
     const handleCopyJson = async (test: StoredTest) => {
@@ -52,11 +55,7 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
         }
     };
 
-
-    const handleRightClick = (
-        e: React.MouseEvent,
-        test: StoredTest
-    ) => {
+    const handleRightClick = (e: React.MouseEvent, test: StoredTest) => {
         e.preventDefault();
         setContextMenu({
             x: e.clientX,
@@ -83,14 +82,20 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
                 label: 'Download JSON',
                 onClick: () => handleDownloadJson(contextMenu.test),
             },
+            {
+                key: 'rename',
+                label: 'Rename',
+                onClick: () => {
+                    setRenamingId(contextMenu.test.id);
+                    setRenameText(contextMenu.test.name);
+                    setContextMenu(null);
+                },
+            },
         ]
         : [];
 
     return (
-        <Layout.Sider
-            width={250}
-            style={{ minWidth: '250px', maxWidth: '250px', background: '#fff' }}
-        >
+        <Layout.Sider width={250} style={{ minWidth: '250px', maxWidth: '250px', background: '#fff' }}>
             <div
                 ref={containerRef}
                 style={{
@@ -105,7 +110,7 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
                         textAlign: 'center',
                         fontSize: 20,
                         fontWeight: 'bold',
-                        color: '#000',
+                        color: "#000",
                         borderBottom: '1px solid #eee',
                     }}
                 >
@@ -130,23 +135,29 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
                                     onClick={() => onSelect(test.id)}
                                     onContextMenu={(e) => handleRightClick(e, test)}
                                 >
-                                    <div
-                                        style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            gap: 4,
-                                            pointerEvents: 'none',
-                                        }}
-                                    >
-                                        <span
-                                            style={{
-                                                maxWidth: 150,
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap',
-                                            }}
-                                        >
-                                            {test.name}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, pointerEvents: 'none' }}>
+                                        <span style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {renamingId === test.id ? (
+                                                <Input
+                                                    size="small"
+                                                    autoFocus
+                                                    value={renameText}
+                                                    onChange={(e) => setRenameText(e.target.value)}
+                                                    onBlur={async () => {
+                                                        const trimmed = renameText.trim();
+                                                        if (trimmed && trimmed !== test.name) {
+                                                            await db.tests.update(test.id, { name: trimmed });
+                                                            message.success('Renamed');
+                                                        }
+                                                        setRenamingId(null);
+                                                    }}
+                                                    onPressEnter={(e) => {
+                                                        e.currentTarget.blur();
+                                                    }}
+                                                />
+                                            ) : (
+                                                test.name
+                                            )}
                                         </span>
                                         <span>{latest ? `${latest.score}/${test.questions.length}` : 'NT'}</span>
                                     </div>

@@ -1,4 +1,3 @@
-// App.tsx
 import { useState } from 'react';
 import { Layout } from 'antd';
 import Sidebar from './components/Sidebar';
@@ -17,14 +16,16 @@ const App = () => {
 
     return (
         <Layout style={{ display: 'flex', height: '100vh', width: '99vw' }}>
-            <Sidebar
-                selectedId={selectedTestId}
-                onSelect={(id) => {
-                    setSelectedTestId(id);
-                    setSession(null);
-                }}
-                onAdd={() => setShowAddModal(true)}
-            />
+            {session?.mode !== 'taking' && (
+                <Sidebar
+                    selectedId={selectedTestId}
+                    onSelect={(id) => {
+                        setSelectedTestId(id);
+                        setSession(null);
+                    }}
+                    onAdd={() => setShowAddModal(true)}
+                />
+            )}
             <div style={{ flex: 1, minWidth: 0, overflow: 'auto', height: '100%' }}>
                 <MainContent
                     selectedTestId={selectedTestId}
