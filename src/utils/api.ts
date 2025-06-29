@@ -5,8 +5,8 @@ export function extractJson<T>(text: string): T | null {
     const lines = text.trim().split('\n');
 
     // Check and remove ```json or ``` on first/last line
-    if (/^```(?:json)?\s*$/i.test(lines[0])) lines.shift();
-    if (/^\s*```$/.test(lines[lines.length - 1])) lines.pop();
+    if (/^\`\`\`(?:json)?\s*$/i.test(lines[0])) lines.shift();
+    if (/^\s*\`\`\`$/.test(lines[lines.length - 1])) lines.pop();
 
     const cleaned = lines.join('\n').trim();
     return JSON.parse(cleaned);
@@ -17,13 +17,13 @@ export function extractJson<T>(text: string): T | null {
   }
 }
 
-export async function uploadToGeminiAndGenerateQuiz(fileContent: string): Promise<string> {
+export async function uploadToGeminiAndGenerateQuiz(fileContent: string, signal?: AbortSignal): Promise<string> {
   const prompt = `
 Bạn là một giáo viên đại học kỳ cựu, chuyên ra đề thi khó và đánh đố sinh viên. Tôi sẽ cung cấp cho bạn một file tài liệu (slide PDF hoặc text), bạn hãy:
 
     Đọc kỹ nội dung trong file, chia nó thành các phần hoặc chủ đề chính.
 
-    Dựa trên toàn bộ nội dung, tạo ra CHÍNH XÁC 30 câu hỏi trắc nghiệm.
+    Dựa trên toàn bộ nội dung, tạo ra CHÍNH XÁC 30 câu hỏi trắc nghiệm, không được thiếu, không được thừa.
 
 Yêu cầu:
 
@@ -71,7 +71,7 @@ Kết quả đầu ra cần đúng theo định dạng JSON như sau:
   }
 ]
 
-Chỉ cần trả về JSON, không cần giải thích gì thêm.
+Chỉ cần trả về JSON, không cần giải thích gì thêm, không trình bày gì cả. Chỉ JSON thôi.
 
 Here is the content:
 
@@ -84,13 +84,14 @@ ${fileContent}
   if (!apiKey) throw new Error('Missing Gemini API key in .env (VITE_GEMINI_API_KEY)');
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
       }),
+      signal,
     }
   );
 

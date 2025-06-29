@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Modal,
     Input,
@@ -38,6 +38,27 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
     const [jsonError, setJsonError] = useState<string | null>(null);
     const [rawJson, setRawJson] = useState<string | null>(null);
 
+    const [startTime, setStartTime] = useState<number | null>(null);
+    const [elapsed, setElapsed] = useState<number>(0);
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+
+        if (startTime) {
+            interval = setInterval(() => {
+                const newEllapsed = Math.floor((Date.now() - startTime) / 1000);
+                setElapsed(newEllapsed);
+                setStatusMessage(mode === 'upload' ? `Thinking (${newEllapsed})s` : 'Parsing pasted JSON...');
+            }, 1000);
+        }
+
+        return () => {
+            clearInterval(interval);
+        };
+    }, [startTime]);
+
     const handleFileUpload = async (file: RcFile) => {
         if (file.type !== 'application/pdf') {
             message.error('Only PDF files are supported.');
@@ -61,15 +82,20 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
     };
 
     const handleGenerate = async () => {
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         setUploading(true);
-        setStatusMessage(mode === 'upload' ? 'Uploading file to Gemini...' : 'Parsing pasted JSON...');
+        setStartTime(Date.now());
+        setElapsed(0);
+        setStatusMessage(mode === 'upload' ? `Thinking (${elapsed})s` : 'Parsing pasted JSON...');
 
         try {
             let parsed: QuizQuestion[] | null = null;
 
             if (mode === 'upload') {
                 if (!fileContent) return;
-                const result = await uploadToGeminiAndGenerateQuiz(fileContent);
+                const result = await uploadToGeminiAndGenerateQuiz(fileContent, controller.signal);
                 setStatusMessage('Cleaning and parsing Gemini response...');
                 const fixed = fixSmartQuotes(result);
                 parsed = extractJson<QuizQuestion[]>(fixed);
@@ -103,10 +129,16 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
             message.success('Test created!');
             onCreated(newId);
         } catch (err: any) {
-            message.error(err.message || 'Something went wrong');
+            if (err.name === 'AbortError') {
+                message.warning('Quiz generation was cancelled.');
+            } else {
+                message.error(err.message || 'Something went wrong');
+            }
         } finally {
             setUploading(false);
             setStatusMessage(null);
+            setStartTime(null);
+            abortControllerRef.current = null;
         }
     };
 
@@ -118,8 +150,13 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
         <>
             <Modal
                 open
-                onCancel={onClose}
                 onOk={handleGenerate}
+                onCancel={() => {
+                    if (abortControllerRef.current) {
+                        abortControllerRef.current.abort(); // Kill the fetch
+                    }
+                    onClose(); // Then close modal
+                }}
                 okText="Create Test"
                 okButtonProps={{ disabled: !canGenerate }}
                 confirmLoading={isUploading}
@@ -214,10 +251,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                     <div style={{ marginTop: 16, textAlign: 'center' }}>
                         <Spin />
                         {statusMessage && (
-                            <Paragraph
-                                type="secondary"
-                                style={{ marginTop: 8 }}
-                            >
+                            <Paragraph type="secondary" style={{ marginTop: 8 }}>
                                 {statusMessage}
                             </Paragraph>
                         )}
