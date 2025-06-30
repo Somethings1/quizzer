@@ -145,7 +145,7 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
             <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                 <div
                     style={{
-                        padding: '16px 0',
+                        padding: '26px 0 10px 0',
                         fontSize: 20,
                         fontWeight: 'bold',
                         color: '#000',
@@ -202,7 +202,7 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
                                 </Popconfirm>
                             </div>
                     ) : (
-                        <Button type="link" block onClick={onAdd}>
+                        <Button type="link" block onClick={onAdd} >
                             + New Test
                         </Button>
                     )}

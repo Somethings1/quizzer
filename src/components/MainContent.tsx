@@ -15,10 +15,13 @@ interface Props {
     session: TestSession | null;
     setSession: (s: TestSession | null) => void;
     onAddTest: () => void;
+    timeLimit?: number;
 }
 
 const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, session, setSession, onAddTest }) => {
     const [test, setTest] = useState<StoredTest | null>(null);
+    const [timeLimit, setTimeLimit] = useState(0);
+    const [starting, setStarting] = useState(false);
 
     useEffect(() => {
         if (!selectedTestId) {
@@ -26,10 +29,18 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
             return;
         }
         db.tests.get(selectedTestId).then(setTest);
+        setStarting(false);
     }, [selectedTestId]);
 
     const handleNewTestCreated = (id: string) => {
         setSelectedTestId(id);
+    }
+
+    const handleStartTest = (options: {timeLimit?: number}) => {
+        setStarting(false);
+        setSession({testId: test.id, mode: 'taking'});
+        if (options.timeLimit)
+            setTimeLimit(options.timeLimit);
     }
 
     if (!test) {
@@ -58,29 +69,27 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
     const latest = test.attempts[test.attempts.length - 1];
 
     if (!test.attempts.length && !session) {
-        return <TestStart test={test} onStart={() => setSession({ testId: test.id, mode: 'taking' })} />;
+        return <TestStart test={test} onStart={handleStartTest} />;
     }
 
     if (session?.mode === 'taking') {
-        return <TestTaking test={test} onFinish={() => setSession(null)} />;
+        return <TestTaking test={test} onFinish={() => setSession(null)} timeLimit={timeLimit} />;
     }
 
     if (session?.mode === 'reviewing') {
         return <TestReview test={test} onBack={() => setSession(null)} />;
     }
 
-    if (!latest && !session) {
+    if (!latest && !session || starting) {
         return (
             <TestStart
                 test={test}
-                onStart={(options) =>
-                    setSession({ testId: test.id, mode: 'taking', options })
-                }
+                onStart={handleStartTest}
             />
         );
     }
 
-    return <TestSummary test={test} setSession={setSession} onNewTestCreated={handleNewTestCreated} />;
+    return <TestSummary test={test} setSession={setSession} setStarting={setStarting} onNewTestCreated={handleNewTestCreated} />;
 };
 
 export default MainContent;

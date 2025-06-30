@@ -8,6 +8,7 @@ import { setMessageApi } from './utils/messageProvider';
 interface TestSession {
     mode: 'taking' | 'reviewing';
     testId: string;
+    timeLimit?: number;
 }
 
 const App = () => {

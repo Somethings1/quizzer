@@ -1,4 +1,4 @@
-import { Button, Typography, Checkbox } from 'antd';
+import { Button, Typography, Checkbox, InputNumber } from 'antd';
 import type { StoredTest } from '../db/db';
 import { useState } from 'react';
 
@@ -6,11 +6,12 @@ const { Title, Paragraph } = Typography;
 
 interface Props {
     test: StoredTest;
-    onStart: (options: { instantFeedback: boolean }) => void;
+    onStart: (options: { timeLimit?: number }) => void;
 }
 
 const TestStart: React.FC<Props> = ({ test, onStart }) => {
-    const [instantFeedback, setInstantFeedback] = useState(false);
+    const [timed, setTimed] = useState(false);
+    const [durationMinutes, setDurationMinutes] = useState(15); // default to 15 mins
 
     return (
         <div
@@ -36,15 +37,26 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
                 This test contains <strong>{test.questions.length}</strong> questions
             </Paragraph>
 
-            <div style={{ marginBottom: 32 }}>
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
                 <Checkbox
-                    checked={instantFeedback}
-                    onChange={(e) => setInstantFeedback(e.target.checked)}
+                    checked={timed}
+                    onChange={(e) => setTimed(e.target.checked)}
                     style={{ fontSize: 14 }}
                 >
-                    Show explanations immediately
+                    Timed test
                 </Checkbox>
+                {timed && (
+                    <InputNumber
+                        min={1}
+                        max={240}
+                        value={durationMinutes}
+                        onChange={(val) => setDurationMinutes(val || 1)}
+                        addonAfter="minutes"
+                        style={{ width: '200px' }}
+                    />
+                )}
             </div>
+
 
             <Button
                 type="primary"
@@ -55,9 +67,12 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
                     height: 48,
                     width: 150,
                     fontSize: 16,
-
                 }}
-                onClick={() => onStart({ instantFeedback })}
+                onClick={() =>
+                    onStart({
+                        timeLimit: timed ? durationMinutes * 60 : undefined,
+                    })
+                }
             >
                 Start Test
             </Button>
