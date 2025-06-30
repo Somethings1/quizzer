@@ -18,6 +18,7 @@
     "dexie": "^4.0.11",
     "dexie-react-hooks": "^1.1.7",
     "jsonlint-mod": "^1.7.6",
+    "jszip": "^3.10.1",
     "lodash": "^4.17.21",
     "pdfjs-dist": "^5.3.31",
     "react": "^19.1.0",
