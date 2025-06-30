@@ -41,6 +41,8 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
         setSession({testId: test.id, mode: 'taking'});
         if (options.timeLimit)
             setTimeLimit(options.timeLimit);
+        else
+            setTimeLimit(undefined);
     }
 
     if (!test) {
