@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, FC, ReactNode } from 'react';
 import { StoredTest } from '../db/db';
 import {
     Radio,
@@ -18,6 +18,88 @@ interface Props {
     timeLimit?: number; // seconds
 }
 
+// NEW: Helper function to render text with highlighted matches
+const renderHighlightedText = (
+    text: string,
+    matches: { start: number; end: number; isCurrent: boolean }[]
+): ReactNode => {
+    if (!matches || matches.length === 0) {
+        return <>{text}</>;
+    }
+
+    const sortedMatches = [...matches].sort((a, b) => a.start - b.start);
+    let lastIndex = 0;
+    const parts: (string | JSX.Element)[] = [];
+
+    sortedMatches.forEach((match, i) => {
+        if (match.start > lastIndex) {
+            parts.push(text.substring(lastIndex, match.start));
+        }
+        const style = {
+            backgroundColor: match.isCurrent ? '#ffffa0' : '#ffd700',
+            padding: '0',
+            margin: '0',
+            borderRadius: '3px',
+        };
+        parts.push(
+            <mark key={`${i}-${match.start}`} style={style}>
+                {text.substring(match.start, match.end)}
+            </mark>
+        );
+        lastIndex = match.end;
+    });
+
+    if (lastIndex < text.length) {
+        parts.push(text.substring(lastIndex));
+    }
+
+    return <>{parts}</>;
+};
+
+// NEW: Search bar component
+interface SearchBarProps {
+    query: string;
+    setQuery: (q: string) => void;
+    onPrev: () => void;
+    onNext: () => void;
+    onClose: () => void;
+    current: number;
+    total: number;
+    inputRef: React.RefObject<HTMLInputElement>;
+}
+// CHANGED: Updated SearchBar component with new styles as requested.
+const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClose, current, total, inputRef }) => (
+    <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        width: '100%',
+        padding: '8px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        background: 'white',
+        gap: '16px',
+        zIndex: 1000,
+        boxShadow: '0 -2px 10px rgba(0,0,0,0.2)'
+    }}>
+        <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search all questions..."
+            style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ddd', background: '#f0f2f5', color: 'black' }}
+        />
+        <span style={{ textAlign: 'center', fontSize: '14px', color: '#000' }}>
+            {query && total > 0 ? `${current + 1} of ${total}` : query ? 'Not found' : ''}
+        </span>
+        <Button size="middle" onClick={onPrev} disabled={total === 0}>Previous (N)</Button>
+        <Button size="middle" onClick={onNext} disabled={total === 0}>Next (n)</Button>
+        <Button size="middle" onClick={onClose} type="text" style={{color: '#aaa', marginLeft: 'auto'}}>Close (Esc)</Button>
+    </div>
+);
+
+
 const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<number, string[]>>({});
@@ -29,6 +111,13 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     const bufferRef = useRef('');
     const spacePressedRef = useRef(false);
     const bufferTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<{ questionIndex: number; location: 'statement' | 'answer'; answerContent?: string; match: { start: number; end: number } }[]>([]);
+    const [currentResultIndex, setCurrentResultIndex] = useState(-1);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+
 
     const q = test.questions[currentIndex];
     const totalCorrect = q.answer.filter((a) => a.correct).length;
@@ -69,16 +158,9 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     const toggleChoice = (choice: string) => {
         setAnswers((prev) => {
             const prevChoices = prev[currentIndex] || [];
-
-            if (totalCorrect === 1) {
-                return { ...prev, [currentIndex]: [choice] };
-            }
-
+            if (totalCorrect === 1) return { ...prev, [currentIndex]: [choice] };
             const exists = prevChoices.includes(choice);
-            const updated = exists
-                ? prevChoices.filter((c) => c !== choice)
-                : [...prevChoices, choice];
-
+            const updated = exists ? prevChoices.filter((c) => c !== choice) : [...prevChoices, choice];
             return { ...prev, [currentIndex]: updated };
         });
     };
@@ -86,22 +168,13 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     const handleSubmit = async () => {
         const duration = Math.floor((Date.now() - startRef.current) / 1000);
         let score = 0;
-
         test.questions.forEach((q, idx) => {
             const user = answers[idx] || [];
             const correct = q.answer.filter((a) => a.correct).map((a) => a.content).sort();
             const userSorted = [...user].sort();
             if (JSON.stringify(correct) === JSON.stringify(userSorted)) score++;
         });
-
-        const attempt = {
-            id: String(Date.now()),
-            time: Date.now(),
-            duration,
-            selectedAnswers: answers,
-            score,
-        };
-
+        const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answers, score };
         await test.attempts.push(attempt);
         const { db } = await import('../db/db');
         await db.tests.put(test);
@@ -109,8 +182,69 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     };
 
     useEffect(() => {
+        if (!isSearching || !searchQuery) {
+            setSearchResults([]);
+            setCurrentResultIndex(-1);
+            return;
+        }
+        const results: typeof searchResults = [];
+        const queryLower = searchQuery.toLowerCase();
+        if (!queryLower) return;
+        test.questions.forEach((question, questionIndex) => {
+            const statementLower = question.statement.toLowerCase();
+            let startIndex = -1;
+            while ((startIndex = statementLower.indexOf(queryLower, startIndex + 1)) !== -1) {
+                results.push({
+                    questionIndex,
+                    location: 'statement',
+                    match: { start: startIndex, end: startIndex + queryLower.length },
+                });
+            }
+            question.answer.forEach((ans) => {
+                const answerLower = ans.content.toLowerCase();
+                let ansStartIndex = -1;
+                while ((ansStartIndex = answerLower.indexOf(queryLower, ansStartIndex + 1)) !== -1) {
+                    results.push({
+                        questionIndex,
+                        location: 'answer',
+                        answerContent: ans.content,
+                        match: { start: ansStartIndex, end: ansStartIndex + queryLower.length },
+                    });
+                }
+            });
+        });
+        setSearchResults(results);
+        setCurrentResultIndex(results.length > 0 ? 0 : -1);
+    }, [searchQuery, isSearching, test.questions]);
+
+    const navigateToResult = useCallback((index: number) => {
+        if (index < 0 || index >= searchResults.length) return;
+        setCurrentResultIndex(index);
+        const result = searchResults[index];
+        if (result.questionIndex !== currentIndex) {
+            setCurrentIndex(result.questionIndex);
+        }
+    }, [searchResults, currentIndex]);
+
+    const handleNextResult = useCallback(() => {
+        if (searchResults.length === 0) return;
+        const nextIndex = (currentResultIndex + 1) % searchResults.length;
+        navigateToResult(nextIndex);
+    }, [currentResultIndex, searchResults.length, navigateToResult]);
+
+    const handlePrevResult = useCallback(() => {
+        if (searchResults.length === 0) return;
+        const prevIndex = (currentResultIndex - 1 + searchResults.length) % searchResults.length;
+        navigateToResult(prevIndex);
+    }, [currentResultIndex, searchResults.length, navigateToResult]);
+
+
+    useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (isSearching) return;
+
             const isDigit = /^[0-9]$/.test(e.key);
+            const isInputFocused = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA';
 
             if (spacePressedRef.current) {
                 if (isDigit) {
@@ -128,7 +262,9 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                 return;
             }
 
-            if (e.key === 'ArrowUp') {
+            // CHANGED: Added ' ' (spacebar) to trigger jump mode
+            if (e.key === 'ArrowUp' || e.key === ' ') {
+                e.preventDefault(); // Prevent default spacebar action (e.g., scroll)
                 spacePressedRef.current = true;
                 bufferRef.current = '';
                 return;
@@ -140,25 +276,72 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
             }
 
             if (e.key === '`') {
-                setReviewMarks((prev) => ({
-                    ...prev,
-                    [currentIndex]: !prev[currentIndex],
-                }));
+                setReviewMarks((prev) => ({ ...prev, [currentIndex]: !prev[currentIndex] }));
                 return;
             }
 
-            if (e.key === 'ArrowLeft') {
-                setCurrentIndex((i) => Math.max(0, i - 1));
-            }
-
-            if (e.key === 'ArrowRight') {
-                setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1));
+            // CHANGED: Added 'h' and 'l' for navigation, ignore if an input is focused
+            if (!isInputFocused) {
+                if (e.key.toLowerCase() === 'h' || e.key === 'ArrowLeft') {
+                    setCurrentIndex((i) => Math.max(0, i - 1));
+                }
+                if (e.key.toLowerCase() === 'l' || e.key === 'ArrowRight') {
+                    setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1));
+                }
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [choices, test.questions.length]);
+    }, [choices, test.questions.length, isSearching]);
+
+    useEffect(() => {
+        const handleSearchKeys = (e: KeyboardEvent) => {
+            if (((e.ctrlKey || e.metaKey) && e.key === 'f') || e.key === '/') {
+                const isTyping = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA';
+                if (!isTyping) {
+                    e.preventDefault();
+                    setIsSearching(true);
+                    setTimeout(() => searchInputRef.current?.focus(), 50);
+                }
+                return;
+            }
+
+            if (!isSearching) return;
+
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                setIsSearching(false);
+                setSearchQuery('');
+            }
+
+            const isInputFocused = document.activeElement === searchInputRef.current;
+
+            // CHANGED: Unfocus the input after pressing enter
+            if (isInputFocused && e.key === 'Enter') {
+                e.preventDefault();
+                e.shiftKey ? handlePrevResult() : handleNextResult();
+                searchInputRef.current?.blur(); // Unfocus to enable keyboard shortcuts
+            }
+
+            if (!isInputFocused) {
+                 if (e.key.toLowerCase() === 'n') {
+                    e.preventDefault();
+                    e.shiftKey ? handlePrevResult() : handleNextResult();
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    handleNextResult();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    handlePrevResult();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleSearchKeys);
+        return () => window.removeEventListener('keydown', handleSearchKeys);
+    }, [isSearching, handlePrevResult, handleNextResult]);
+
 
     const formatTime = (sec: number) => {
         const m = Math.floor(sec / 60);
@@ -166,158 +349,102 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
         return `${m}:${s.toString().padStart(2, '0')}`;
     };
 
+    const getMatchesForText = (location: 'statement' | 'answer', content?: string) => {
+        return searchResults
+            .map((result, index) => ({ ...result, globalIndex: index }))
+            .filter(result =>
+                result.questionIndex === currentIndex &&
+                result.location === location &&
+                (location === 'statement' || result.answerContent === content)
+            )
+            .map(result => ({ ...result.match, isCurrent: result.globalIndex === currentResultIndex }));
+    };
+
     return (
         <Row style={{ width: '100%', height: '100vh', background: '#f9f9f9' }}>
             <Col flex="3" style={{ background: '#fff' }}>
-                <Row
-                    justify="space-between"
-                    align="middle"
-                    style={{
-                        padding: '32px 24px 18px 24px',
-                        background: '#f0f2f5',
-                        borderBottom: '1px solid #ddd',
-                    }}
-                >
-                    <Title level={4} style={{ margin: 0 }}>
-                        {test.name}
-                    </Title>
+                <Row justify="space-between" align="middle" style={{ padding: '32px 24px 18px 24px', background: '#f0f2f5', borderBottom: '1px solid #ddd' }}>
+                    <Title level={4} style={{ margin: 0 }}>{test.name}</Title>
                     <Paragraph style={{ fontSize: 16, margin: 0 }}>
-                        {timeLimit
-                            ? `Time Left: ${formatTime(remaining)}`
-                            : `Elapsed: ${formatTime(remaining)}`}
+                        {timeLimit ? `Time Left: ${formatTime(remaining)}` : `Elapsed: ${formatTime(remaining)}`}
                     </Paragraph>
                 </Row>
-
                 <Row style={{ padding: '34px 30px' }}>
                     <Row justify="space-between" align="middle" style={{ width: '100%', marginBottom: 32 }}>
-                        <Button
-                            type={reviewMarks[currentIndex] ? 'primary' : 'default'}
-                            onClick={() =>
-                                setReviewMarks((prev) => ({
-                                    ...prev,
-                                    [currentIndex]: !prev[currentIndex],
-                                }))
-                            }
-                        >
+                        <Button type={reviewMarks[currentIndex] ? 'primary' : 'default'} onClick={() => setReviewMarks((prev) => ({ ...prev, [currentIndex]: !prev[currentIndex] }))}>
                             {reviewMarks[currentIndex] ? '✓ Marked' : 'Mark for Review'}
                         </Button>
-                        <Title level={3} style={{ margin: 0 }}>
-                            Question {currentIndex + 1}
-                        </Title>
-                        <Button type="primary" danger onClick={handleSubmit}>
-                            Submit
-                        </Button>
+                        <Title level={3} style={{ margin: 0 }}>Question {currentIndex + 1}</Title>
+                        <Button type="primary" danger onClick={handleSubmit}>Submit</Button>
                     </Row>
-
-                    <Paragraph style={{ fontSize: 18 }}>{q.statement}</Paragraph>
+                    <Paragraph style={{ fontSize: 18, width: '100%' }}>
+                        {isSearching && searchQuery ? renderHighlightedText(q.statement, getMatchesForText('statement')) : q.statement}
+                    </Paragraph>
                     <Paragraph type="secondary" style={{ fontStyle: 'italic', width: '100%' }}>
                         Choose {totalCorrect} answer{totalCorrect > 1 ? 's' : ''}
                     </Paragraph>
-
                     {totalCorrect === 1 ? (
-                        <Radio.Group
-                            value={(answers[currentIndex] && answers[currentIndex][0]) || null}
-                            onChange={(e) =>
-                                setAnswers((prev) => ({ ...prev, [currentIndex]: [e.target.value] }))
-                            }
-                        >
+                        <Radio.Group value={(answers[currentIndex] && answers[currentIndex][0]) || null} onChange={(e) => setAnswers((prev) => ({ ...prev, [currentIndex]: [e.target.value] }))}>
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Radio key={idx} value={a.content}>
-                                        {idx + 1}. {a.content}
+                                        {idx + 1}.{' '}<span>{isSearching && searchQuery ? renderHighlightedText(a.content, getMatchesForText('answer', a.content)) : a.content}</span>
                                     </Radio>
                                 ))}
                             </Space>
                         </Radio.Group>
                     ) : (
-                        <Checkbox.Group
-                            value={answers[currentIndex] || []}
-                            onChange={(vals) =>
-                                setAnswers((prev) => ({ ...prev, [currentIndex]: vals as string[] }))
-                            }
-                        >
+                        <Checkbox.Group value={answers[currentIndex] || []} onChange={(vals) => setAnswers((prev) => ({ ...prev, [currentIndex]: vals as string[] }))}>
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Checkbox key={idx} value={a.content}>
-                                        {idx + 1}. {a.content}
+                                         {idx + 1}.{' '}<span>{isSearching && searchQuery ? renderHighlightedText(a.content, getMatchesForText('answer', a.content)) : a.content}</span>
                                     </Checkbox>
                                 ))}
                             </Space>
                         </Checkbox.Group>
                     )}
-
                     <Row justify="space-between" style={{ marginTop: 64, width: '100%' }}>
-                        <Button
-                            onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-                            disabled={currentIndex === 0}
-                        >
-                            Previous
-                        </Button>
-                        <Button
-                            onClick={() =>
-                                setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))
-                            }
-                            disabled={currentIndex === test.questions.length - 1}
-                        >
-                            Next
-                        </Button>
+                        <Button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))} disabled={currentIndex === 0}>Previous</Button>
+                        <Button onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))} disabled={currentIndex === test.questions.length - 1}>Next</Button>
                     </Row>
                 </Row>
             </Col>
-
-            {/* Sidebar */}
-            <Col
-                flex="1"
-                style={{
-                    background: '#f5f5f7',
-                    padding: '48px 24px',
-                    borderLeft: '1px solid #ddd',
-                    overflowY: 'auto',
-                }}
-            >
+            <Col flex="1" style={{ background: '#f5f5f7', padding: '48px 24px', borderLeft: '1px solid #ddd', overflowY: 'auto' }}>
                 <Title level={5}>All Questions</Title>
-                <div
-                    style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, 40px)',
-                        gap: 6,
-                    }}
-                >
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 6 }}>
                     {test.questions.map((_, idx) => {
                         const answered = !!answers[idx]?.length;
                         const marked = reviewMarks[idx];
                         const isCurrent = idx === currentIndex;
+                        const hasSearchResults = isSearching && searchQuery && searchResults.some(r => r.questionIndex === idx);
                         const bg = marked ? 'gold' : answered ? '#007aff' : '#ccc';
-                        const border = isCurrent ? '2px solid #000' : 'none';
-
+                        const border = isCurrent ? '2px solid #000' : hasSearchResults ? '2px solid #ffd700' : 'none';
                         return (
-                            <div
-                                key={idx}
-                                onClick={() => setCurrentIndex(idx)}
-                                style={{
-                                    width: 40,
-                                    height: 40,
-                                    background: bg,
-                                    color: '#fff',
-                                    textAlign: 'center',
-                                    display: 'flex',
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    borderRadius: 8,
-                                    fontWeight: 500,
-                                    cursor: 'pointer',
-                                    border: border,
-                                }}
-                            >
+                            <div key={idx} onClick={() => setCurrentIndex(idx)} style={{ width: 40, height: 40, background: bg, color: answered || marked ? '#fff' : '#000', textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: 8, fontWeight: 500, cursor: 'pointer', border: border, boxSizing: 'border-box' }}>
                                 {idx + 1}
                             </div>
                         );
                     })}
                 </div>
             </Col>
+            {isSearching && (
+                <SearchBar
+                    query={searchQuery}
+                    setQuery={setSearchQuery}
+                    onPrev={handlePrevResult}
+                    onNext={handleNextResult}
+                    onClose={() => {
+                        setIsSearching(false);
+                        setSearchQuery('');
+                    }}
+                    current={currentResultIndex}
+                    total={searchResults.length}
+                    inputRef={searchInputRef}
+                />
+            )}
         </Row>
     );
 };
 
 export default TestTaking;
-
