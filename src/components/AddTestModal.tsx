@@ -8,8 +8,9 @@ import {
     Spin,
     Typography,
     Segmented,
+    Tooltip,
 } from 'antd';
-import { InboxOutlined } from '@ant-design/icons';
+import { InboxOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { RcFile } from 'antd/es/upload';
 import { extractJson, uploadToGeminiAndGenerateQuiz } from '../utils/api';
 import { fixSmartQuotes } from '../utils/repairJson';
@@ -60,22 +61,55 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
     }, [startTime]);
 
     const handleFileUpload = async (file: RcFile) => {
-        if (file.type !== 'application/pdf') {
-            message.error('Only PDF files are supported.');
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        const isPdf = file.type === 'application/pdf' || ext === 'pdf';
+        const isJson = file.type === 'application/json' || ext === 'json';
+
+        if (!isPdf && !isJson) {
+            message.error('Only PDF or JSON files are supported.');
             return false;
         }
 
         setFileName(file.name.replace(/\.[^/.]+$/, ''));
 
-        try {
-            setStatusMessage('Extracting text from PDF...');
-            const text = await extractTextFromPdf(file);
-            setFileContent(text);
-            setStatusMessage(null);
-        } catch (err) {
-            console.error('[PDF Extraction Error]', err);
-            message.error('Failed to extract text from PDF.');
-            setStatusMessage(null);
+        if (isPdf) {
+            try {
+                setStatusMessage('Extracting text from PDF...');
+                const text = await extractTextFromPdf(file);
+                setFileContent(text);
+                setStatusMessage(null);
+            } catch (err) {
+                console.error('[PDF Extraction Error]', err);
+                message.error('Failed to extract text from PDF.');
+                setStatusMessage(null);
+            }
+        } else if (isJson) {
+            try {
+                const text = await file.text();
+                const fixed = fixSmartQuotes(text);
+                const parsed = extractJson<QuizQuestion[]>(fixed);
+
+                if (!parsed) {
+                    setJsonError('Failed to parse uploaded JSON');
+                    setRawJson(fixed);
+                    return false;
+                }
+
+                const newId = uuidv4();
+                await db.tests.add({
+                    id: newId,
+                    name: fileName || 'Untitled Test',
+                    createdAt: Date.now(),
+                    questions: parsed,
+                    attempts: [],
+                });
+
+                message.success('Test created!');
+                onCreated(newId);
+            } catch (err) {
+                console.error('[JSON Upload Error]', err);
+                message.error('Failed to read JSON file.');
+            }
         }
 
         return false;
@@ -218,7 +252,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                         <Dragger
                             beforeUpload={handleFileUpload}
                             showUploadList={false}
-                            accept=".pdf"
+                            accept=".pdf,.json"
                             style={{
                                 padding: 16,
                                 borderRadius: 8,
@@ -229,7 +263,19 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                                 <InboxOutlined />
                             </p>
                             <p className="ant-upload-text">
-                                Click or drag a PDF to upload
+                                Click or drag a PDF or JSON file to upload.
+                                <Tooltip title={
+                                    <div>
+                                        <p className="ant-upload-text">
+                                            PDF files will be sent to our model to generate questions based on its content.
+                                        </p>
+                                        <p className="ant-upload-text">
+                                            JSON files will be used to create a test and must follow Quizzer format. Use it if you've exported a test to JSON.
+                                        </p>
+                                    </div>
+                                }>
+                                    <InfoCircleOutlined style={{ marginLeft: 8 }}/>
+                                </Tooltip>
                             </p>
                         </Dragger>
                     )
