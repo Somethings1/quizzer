@@ -203,7 +203,11 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                 title="Create a New Quiz"
                 centered
                 width={600}
-                bodyStyle={{ paddingTop: 12 }}
+                styles={{
+                    body: {
+                        paddingTop: 12,
+                    }
+                }}
             >
                 <div style={{ marginBottom: 24, textAlign: 'center' }}>
                     <Segmented

@@ -17,6 +17,7 @@ import { fixSmartQuotes } from '../utils/repairJson';
 import { QuizQuestion, TestSession } from '../types';
 import JsonFixerModal from './JsonFixerModal';
 import { getMessageApi } from '../utils/messageProvider';
+import Item from 'antd/es/list/Item';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -141,7 +142,14 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated }) =>
                         display: 'flex',
                         flexDirection: 'column',
                     }}
-                    bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 20 }}
+                    styles={{
+                        body: {
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            padding: 20,
+                        }
+                    }}
                 >
                     <Title level={3} style={{ marginBottom: 8 }}>{test.name}</Title>
                     <Text type="secondary">Latest attempt</Text>
@@ -244,13 +252,13 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated }) =>
                             .slice()
                             .reverse()
                             .map((attempt) => (
-                                <Timeline.Item key={attempt.id}>
+                                <Item key={attempt.id}>
                                     <Text style={{ fontWeight: 800 }}>{formatDate(attempt.time)}</Text>
                                     <Paragraph style={{ margin: '4px 20px' }}>
                                         Score: {attempt.score}/{test.questions.length} <br />
                                         Time: {Math.floor(attempt.duration / 60)}m {attempt.duration % 60}s
                                     </Paragraph>
-                                </Timeline.Item>
+                                </Item>
                             ))}
                     </Timeline>
                 )}
