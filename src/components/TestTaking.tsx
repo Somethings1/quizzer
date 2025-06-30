@@ -8,91 +8,43 @@ import {
     Space,
     Row,
     Col,
+    Popconfirm,
 } from 'antd';
 
 const { Title, Paragraph } = Typography;
 
-interface Props {
-    test: StoredTest;
-    onFinish: () => void;
-    timeLimit?: number; // seconds
-}
-
-// NEW: Helper function to render text with highlighted matches
-const renderHighlightedText = (
-    text: string,
-    matches: { start: number; end: number; isCurrent: boolean }[]
-): ReactNode => {
-    if (!matches || matches.length === 0) {
+// ... (renderWithCode, renderHighlightedText, and SearchBar components remain unchanged)
+const renderWithCode = (text: string): ReactNode => {
+    if (!text || !text.includes('`')) {
         return <>{text}</>;
     }
-
+    const codeStyle = { fontFamily: 'monospace', backgroundColor: '#f0f0f0', padding: '2px 4px', borderRadius: '4px', fontSize: '0.9em' };
+    const parts = text.split('`');
+    return (
+        <>
+            {parts.map((part, i) => i % 2 === 1 ? ( <code key={i} style={codeStyle}>{part}</code> ) : ( <span key={i}>{part}</span> ))}
+        </>
+    );
+};
+const renderHighlightedText = (text: string, matches: { start: number; end: number; isCurrent: boolean }[]): ReactNode => {
+    if (!matches || matches.length === 0) { return <>{text}</>; }
     const sortedMatches = [...matches].sort((a, b) => a.start - b.start);
     let lastIndex = 0;
     const parts: (string | JSX.Element)[] = [];
-
     sortedMatches.forEach((match, i) => {
-        if (match.start > lastIndex) {
-            parts.push(text.substring(lastIndex, match.start));
-        }
-        const style = {
-            backgroundColor: match.isCurrent ? '#ffffa0' : '#ffd700',
-            padding: '0',
-            margin: '0',
-            borderRadius: '3px',
-        };
-        parts.push(
-            <mark key={`${i}-${match.start}`} style={style}>
-                {text.substring(match.start, match.end)}
-            </mark>
-        );
+        if (match.start > lastIndex) { parts.push(text.substring(lastIndex, match.start)); }
+        const style = { backgroundColor: match.isCurrent ? '#ffffa0' : '#ffd700', padding: '0', margin: '0', borderRadius: '3px' };
+        parts.push(<mark key={`${i}-${match.start}`} style={style}>{text.substring(match.start, match.end)}</mark>);
         lastIndex = match.end;
     });
-
-    if (lastIndex < text.length) {
-        parts.push(text.substring(lastIndex));
-    }
-
+    if (lastIndex < text.length) { parts.push(text.substring(lastIndex)); }
     return <>{parts}</>;
 };
-
-// NEW: Search bar component
-interface SearchBarProps {
-    query: string;
-    setQuery: (q: string) => void;
-    onPrev: () => void;
-    onNext: () => void;
-    onClose: () => void;
-    current: number;
-    total: number;
-    inputRef: React.RefObject<HTMLInputElement>;
-}
-// CHANGED: Updated SearchBar component with new styles as requested.
+interface SearchBarProps { query: string; setQuery: (q: string) => void; onPrev: () => void; onNext: () => void; onClose: () => void; current: number; total: number; inputRef: React.RefObject<HTMLInputElement>; }
 const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClose, current, total, inputRef }) => (
-    <div style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        width: '100%',
-        padding: '8px 16px',
-        display: 'flex',
-        alignItems: 'center',
-        background: 'white',
-        gap: '16px',
-        zIndex: 1000,
-        boxShadow: '0 -2px 10px rgba(0,0,0,0.2)'
-    }}>
-        <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search all questions..."
-            style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ddd', background: '#f0f2f5', color: 'black' }}
-        />
-        <span style={{ textAlign: 'center', fontSize: '14px', color: '#000' }}>
-            {query && total > 0 ? `${current + 1} of ${total}` : query ? 'Not found' : ''}
-        </span>
+    <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', padding: '8px 16px', display: 'flex', alignItems: 'center', background: 'white', gap: '16px', zIndex: 1000, boxShadow: '0 -2px 10px rgba(0,0,0,0.2)' }}>
+        <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all questions..." style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ddd', background: '#f0f2f5', color: 'black' }} />
+        <span style={{ textAlign: 'center', fontSize: '14px', color: '#000' }}>{query && total > 0 ? `${current + 1} of ${total}` : query ? 'Not found' : ''}</span>
         <Button size="middle" onClick={onPrev} disabled={total === 0}>Previous (N)</Button>
         <Button size="middle" onClick={onNext} disabled={total === 0}>Next (n)</Button>
         <Button size="middle" onClick={onClose} type="text" style={{color: '#aaa', marginLeft: 'auto'}}>Close (Esc)</Button>
@@ -108,9 +60,11 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     const [remaining, setRemaining] = useState<number>(timeLimit ?? 0);
     const startRef = useRef(Date.now());
     const timerRef = useRef<NodeJS.Timeout | null>(null);
-    const bufferRef = useRef('');
-    const spacePressedRef = useRef(false);
-    const bufferTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const [isJumping, setIsJumping] = useState(false);
+    const [jumpBuffer, setJumpBuffer] = useState('');
+    const jumpTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const submitButtonRef = useRef<HTMLElement>(null);
 
     const [isSearching, setIsSearching] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -118,23 +72,25 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     const [currentResultIndex, setCurrentResultIndex] = useState(-1);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
+    // CHANGED: Simplified state for Popconfirm control
+    const [isPopconfirmVisible, setIsPopconfirmVisible] = useState(false);
+
 
     const q = test.questions[currentIndex];
     const totalCorrect = q.answer.filter((a) => a.correct).length;
     const choices = shuffledAnswers[currentIndex] || [];
 
+    // ... (All other hooks and functions up to the key listeners remain the same)
     useEffect(() => {
         if (timeLimit) {
             const endTime = startRef.current + timeLimit * 1000;
-
             timerRef.current = setInterval(() => {
                 const now = Date.now();
                 const diff = Math.max(0, Math.floor((endTime - now) / 1000));
                 setRemaining(diff);
-
                 if (diff <= 0) {
                     clearInterval(timerRef.current!);
-                    handleSubmit(); // auto submit
+                    handleSubmit();
                 }
             }, 1000);
         } else {
@@ -144,7 +100,6 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                 setRemaining(elapsed);
             }, 1000);
         }
-
         return () => clearInterval(timerRef.current!);
     }, [timeLimit]);
 
@@ -155,17 +110,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
         }
     }, [currentIndex, q.answer, shuffledAnswers]);
 
-    const toggleChoice = (choice: string) => {
-        setAnswers((prev) => {
-            const prevChoices = prev[currentIndex] || [];
-            if (totalCorrect === 1) return { ...prev, [currentIndex]: [choice] };
-            const exists = prevChoices.includes(choice);
-            const updated = exists ? prevChoices.filter((c) => c !== choice) : [...prevChoices, choice];
-            return { ...prev, [currentIndex]: updated };
-        });
-    };
-
     const handleSubmit = async () => {
+        setIsPopconfirmVisible(false); // Ensure popconfirm is closed on submit
         const duration = Math.floor((Date.now() - startRef.current) / 1000);
         let score = 0;
         test.questions.forEach((q, idx) => {
@@ -194,22 +140,13 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
             const statementLower = question.statement.toLowerCase();
             let startIndex = -1;
             while ((startIndex = statementLower.indexOf(queryLower, startIndex + 1)) !== -1) {
-                results.push({
-                    questionIndex,
-                    location: 'statement',
-                    match: { start: startIndex, end: startIndex + queryLower.length },
-                });
+                results.push({ questionIndex, location: 'statement', match: { start: startIndex, end: startIndex + queryLower.length } });
             }
             question.answer.forEach((ans) => {
                 const answerLower = ans.content.toLowerCase();
                 let ansStartIndex = -1;
                 while ((ansStartIndex = answerLower.indexOf(queryLower, ansStartIndex + 1)) !== -1) {
-                    results.push({
-                        questionIndex,
-                        location: 'answer',
-                        answerContent: ans.content,
-                        match: { start: ansStartIndex, end: ansStartIndex + queryLower.length },
-                    });
+                    results.push({ questionIndex, location: 'answer', answerContent: ans.content, match: { start: ansStartIndex, end: ansStartIndex + queryLower.length } });
                 }
             });
         });
@@ -238,62 +175,89 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
         navigateToResult(prevIndex);
     }, [currentResultIndex, searchResults.length, navigateToResult]);
 
+    const toggleChoice = (choice: string) => {
+        setAnswers((prev) => {
+            const prevChoices = prev[currentIndex] || [];
+            if (totalCorrect === 1) return { ...prev, [currentIndex]: [choice] };
+            const exists = prevChoices.includes(choice);
+            const updated = exists ? prevChoices.filter((c) => c !== choice) : [...prevChoices, choice];
+            return { ...prev, [currentIndex]: updated };
+        });
+    };
+
+    useEffect(() => {
+        if (!isJumping) return;
+        if (jumpTimerRef.current) { clearTimeout(jumpTimerRef.current); }
+        jumpTimerRef.current = setTimeout(() => {
+            if (jumpBuffer) {
+                const jumpTo = parseInt(jumpBuffer, 10);
+                if (!isNaN(jumpTo) && jumpTo >= 1 && jumpTo <= test.questions.length) {
+                    setCurrentIndex(jumpTo - 1);
+                }
+            }
+            setIsJumping(false);
+            setJumpBuffer('');
+        }, 300);
+        return () => { if (jumpTimerRef.current) { clearTimeout(jumpTimerRef.current); }};
+    }, [isJumping, jumpBuffer, test.questions.length]);
+
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (isSearching) return;
+            if (isPopconfirmVisible || isSearching) return;
 
-            const isDigit = /^[0-9]$/.test(e.key);
+            if (!isJumping && (e.key === 'ArrowUp' || e.key === ' ')) {
+                e.preventDefault();
+                setIsJumping(true);
+                return;
+            }
+            if (isJumping) {
+                e.preventDefault();
+                if (/^[0-9]$/.test(e.key)) { setJumpBuffer(prev => prev + e.key); }
+                else if (e.key === 'Escape') { setIsJumping(false); setJumpBuffer(''); }
+                return;
+            }
             const isInputFocused = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA';
-
-            if (spacePressedRef.current) {
-                if (isDigit) {
-                    bufferRef.current += e.key;
-                    if (bufferTimerRef.current) clearTimeout(bufferTimerRef.current);
-                    bufferTimerRef.current = setTimeout(() => {
-                        const jumpTo = parseInt(bufferRef.current, 10);
-                        if (!isNaN(jumpTo) && jumpTo >= 1 && jumpTo <= test.questions.length) {
-                            setCurrentIndex(jumpTo - 1);
-                        }
-                        bufferRef.current = '';
-                        spacePressedRef.current = false;
-                    }, 500);
-                }
+            if (e.shiftKey && e.key.toUpperCase() === 'S' && !isInputFocused) {
+                e.preventDefault();
+                setIsPopconfirmVisible(true);
                 return;
             }
-
-            // CHANGED: Added ' ' (spacebar) to trigger jump mode
-            if (e.key === 'ArrowUp' || e.key === ' ') {
-                e.preventDefault(); // Prevent default spacebar action (e.g., scroll)
-                spacePressedRef.current = true;
-                bufferRef.current = '';
-                return;
-            }
-
-            if (isDigit) {
+            if (isInputFocused) return;
+            if (/^[0-9]$/.test(e.key)) {
                 const idx = parseInt(e.key, 10) - 1;
-                if (choices[idx]) toggleChoice(choices[idx].content);
+                if (choices[idx]) { toggleChoice(choices[idx].content); }
+                return;
             }
-
             if (e.key === '`') {
                 setReviewMarks((prev) => ({ ...prev, [currentIndex]: !prev[currentIndex] }));
                 return;
             }
+            if (e.key.toLowerCase() === 'h' || e.key === 'ArrowLeft') { setCurrentIndex((i) => Math.max(0, i - 1)); }
+            if (e.key.toLowerCase() === 'l' || e.key === 'ArrowRight') { setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1)); }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isSearching, isJumping, choices, currentIndex, totalCorrect, isPopconfirmVisible]);
 
-            // CHANGED: Added 'h' and 'l' for navigation, ignore if an input is focused
-            if (!isInputFocused) {
-                if (e.key.toLowerCase() === 'h' || e.key === 'ArrowLeft') {
-                    setCurrentIndex((i) => Math.max(0, i - 1));
-                }
-                if (e.key.toLowerCase() === 'l' || e.key === 'ArrowRight') {
-                    setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1));
-                }
+    // CHANGED: Keyboard handler for popconfirm is now more direct
+    useEffect(() => {
+        const handlePopconfirmKeys = (e: KeyboardEvent) => {
+            if (!isPopconfirmVisible) return;
+
+            if (e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                handleSubmit(); // Call submit directly
+            } else if (e.key.toLowerCase() === 'n') {
+                e.preventDefault();
+                setIsPopconfirmVisible(false); // Just close the dialog
             }
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [choices, test.questions.length, isSearching]);
+        window.addEventListener('keydown', handlePopconfirmKeys);
+        return () => window.removeEventListener('keydown', handlePopconfirmKeys);
+    }, [isPopconfirmVisible]); // Dependency is correct
+
 
     useEffect(() => {
         const handleSearchKeys = (e: KeyboardEvent) => {
@@ -306,42 +270,27 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                 }
                 return;
             }
-
             if (!isSearching) return;
-
             if (e.key === 'Escape') {
                 e.preventDefault();
                 setIsSearching(false);
                 setSearchQuery('');
             }
-
             const isInputFocused = document.activeElement === searchInputRef.current;
-
-            // CHANGED: Unfocus the input after pressing enter
             if (isInputFocused && e.key === 'Enter') {
                 e.preventDefault();
                 e.shiftKey ? handlePrevResult() : handleNextResult();
-                searchInputRef.current?.blur(); // Unfocus to enable keyboard shortcuts
+                searchInputRef.current?.blur();
             }
-
             if (!isInputFocused) {
-                 if (e.key.toLowerCase() === 'n') {
-                    e.preventDefault();
-                    e.shiftKey ? handlePrevResult() : handleNextResult();
-                } else if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    handleNextResult();
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    handlePrevResult();
-                }
+                 if (e.key.toLowerCase() === 'n') { e.preventDefault(); e.shiftKey ? handlePrevResult() : handleNextResult(); }
+                 else if (e.key === 'ArrowDown') { e.preventDefault(); handleNextResult(); }
+                 else if (e.key === 'ArrowUp') { e.preventDefault(); handlePrevResult(); }
             }
         };
-
         window.addEventListener('keydown', handleSearchKeys);
         return () => window.removeEventListener('keydown', handleSearchKeys);
     }, [isSearching, handlePrevResult, handleNextResult]);
-
 
     const formatTime = (sec: number) => {
         const m = Math.floor(sec / 60);
@@ -350,36 +299,39 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     };
 
     const getMatchesForText = (location: 'statement' | 'answer', content?: string) => {
-        return searchResults
-            .map((result, index) => ({ ...result, globalIndex: index }))
-            .filter(result =>
-                result.questionIndex === currentIndex &&
-                result.location === location &&
-                (location === 'statement' || result.answerContent === content)
-            )
-            .map(result => ({ ...result.match, isCurrent: result.globalIndex === currentResultIndex }));
+        return searchResults.map((result, index) => ({ ...result, globalIndex: index })).filter(result => result.questionIndex === currentIndex && result.location === location && (location === 'statement' || result.answerContent === content)).map(result => ({ ...result.match, isCurrent: result.globalIndex === currentResultIndex }));
     };
 
     return (
         <Row style={{ width: '100%', height: '100vh', background: '#f9f9f9' }}>
+            {isJumping && ( <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0, 0, 0, 0.75)', color: 'white', padding: '12px 24px', borderRadius: '8px', fontSize: '24px', zIndex: 2000, pointerEvents: 'none' }}> Jumping to: {jumpBuffer} </div> )}
             <Col flex="3" style={{ background: '#fff' }}>
                 <Row justify="space-between" align="middle" style={{ padding: '32px 24px 18px 24px', background: '#f0f2f5', borderBottom: '1px solid #ddd' }}>
                     <Title level={4} style={{ margin: 0 }}>{test.name}</Title>
-                    <Paragraph style={{ fontSize: 16, margin: 0 }}>
-                        {timeLimit ? `Time Left: ${formatTime(remaining)}` : `Elapsed: ${formatTime(remaining)}`}
-                    </Paragraph>
+                    <Paragraph style={{ fontSize: 16, margin: 0 }}> {timeLimit ? `Time Left: ${formatTime(remaining)}` : `Elapsed: ${formatTime(remaining)}`} </Paragraph>
                 </Row>
                 <Row style={{ padding: '34px 30px' }}>
                     <Row justify="space-between" align="middle" style={{ width: '100%', marginBottom: 32 }}>
-                        <Button type={reviewMarks[currentIndex] ? 'primary' : 'default'} onClick={() => setReviewMarks((prev) => ({ ...prev, [currentIndex]: !prev[currentIndex] }))}>
-                            {reviewMarks[currentIndex] ? '✓ Marked' : 'Mark for Review'}
-                        </Button>
+                        <Button type={reviewMarks[currentIndex] ? 'primary' : 'default'} onClick={() => setReviewMarks((prev) => ({ ...prev, [currentIndex]: !prev[currentIndex] }))}> {reviewMarks[currentIndex] ? '✓ Marked' : 'Mark for Review'} </Button>
                         <Title level={3} style={{ margin: 0 }}>Question {currentIndex + 1}</Title>
-                        <Button type="primary" danger onClick={handleSubmit}>Submit</Button>
+
+                        <Popconfirm
+                            title="Submit the test?"
+                            description="Are you sure you want to submit?"
+                            open={isPopconfirmVisible}
+                            onConfirm={handleSubmit}
+                            onCancel={() => setIsPopconfirmVisible(false)}
+                            onOpenChange={(visible) => setIsPopconfirmVisible(visible)}
+                            okText="Yes (Y)"
+                            cancelText="No (N)"
+                        >
+                            <Button ref={submitButtonRef} type="primary" danger> Submit </Button>
+                        </Popconfirm>
                     </Row>
                     <Paragraph style={{ fontSize: 18, width: '100%' }}>
-                        {isSearching && searchQuery ? renderHighlightedText(q.statement, getMatchesForText('statement')) : q.statement}
+                        {isSearching && searchQuery ? renderHighlightedText(q.statement, getMatchesForText('statement')) : renderWithCode(q.statement)}
                     </Paragraph>
+
                     <Paragraph type="secondary" style={{ fontStyle: 'italic', width: '100%' }}>
                         Choose {totalCorrect} answer{totalCorrect > 1 ? 's' : ''}
                     </Paragraph>
@@ -388,7 +340,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Radio key={idx} value={a.content}>
-                                        {idx + 1}.{' '}<span>{isSearching && searchQuery ? renderHighlightedText(a.content, getMatchesForText('answer', a.content)) : a.content}</span>
+                                        {idx + 1}.{' '}
+                                        {isSearching && searchQuery ? renderHighlightedText(a.content, getMatchesForText('answer', a.content)) : renderWithCode(a.content)}
                                     </Radio>
                                 ))}
                             </Space>
@@ -398,7 +351,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Checkbox key={idx} value={a.content}>
-                                         {idx + 1}.{' '}<span>{isSearching && searchQuery ? renderHighlightedText(a.content, getMatchesForText('answer', a.content)) : a.content}</span>
+                                         {idx + 1}.{' '}
+                                         {isSearching && searchQuery ? renderHighlightedText(a.content, getMatchesForText('answer', a.content)) : renderWithCode(a.content)}
                                     </Checkbox>
                                 ))}
                             </Space>
@@ -428,21 +382,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                     })}
                 </div>
             </Col>
-            {isSearching && (
-                <SearchBar
-                    query={searchQuery}
-                    setQuery={setSearchQuery}
-                    onPrev={handlePrevResult}
-                    onNext={handleNextResult}
-                    onClose={() => {
-                        setIsSearching(false);
-                        setSearchQuery('');
-                    }}
-                    current={currentResultIndex}
-                    total={searchResults.length}
-                    inputRef={searchInputRef}
-                />
-            )}
+            {isSearching && ( <SearchBar query={searchQuery} setQuery={setSearchQuery} onPrev={handlePrevResult} onNext={handleNextResult} onClose={() => { setIsSearching(false); setSearchQuery(''); }} current={currentResultIndex} total={searchResults.length} inputRef={searchInputRef} /> )}
         </Row>
     );
 };

@@ -37,4 +37,6 @@ These shortcuts are available only in testing mode
     - Use `Enter`, `n` or `DownArrow` to navigate to next search result.
     - Use `N` or `UpArrow` to navigate to previous search result.
 
-- Press ` (backtick) to mark current question for review.
+- Press `\`` (backtick) to mark current question for review.
+- Press `S` (capital s, aka. `Shift+S`) to submit, then `y` to confirm or `n` to
+cancel.
