@@ -14,6 +14,7 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import { db, StoredTest } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { getMessageApi } from '../utils/messageProvider';
 
 const { Title } = Typography;
 
@@ -36,6 +37,7 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
     const [renameText, setRenameText] = useState('');
     const [selectMode, setSelectMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const message = getMessageApi();
 
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -95,6 +97,15 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
     const contextMenuItems: MenuProps['items'] = contextMenu
         ? [
             {
+                key: 'select',
+                label: 'Select',
+                onClick: () => {
+                    setSelectMode(true);
+                    setSelectedIds([contextMenu.test.id]);
+                    setContextMenu(null);
+                },
+            },
+            {
                 key: 'copy',
                 label: 'Copy JSON',
                 onClick: () => handleCopyJson(contextMenu.test),
@@ -116,6 +127,7 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
             {
                 key: 'delete',
                 label: 'Delete',
+                danger: true,
                 onClick: () => {
                     db.tests.delete(contextMenu.test.id).then(() => {
                         message.success('Deleted test');
@@ -123,15 +135,6 @@ const Sidebar: React.FC<Props> = ({ selectedId, onSelect, onAdd }) => {
                             onSelect(null);
                         }
                     });
-                },
-            },
-            {
-                key: 'select',
-                label: 'Enter Select Mode',
-                onClick: () => {
-                    setSelectMode(true);
-                    setSelectedIds([contextMenu.test.id]);
-                    setContextMenu(null);
                 },
             },
         ]

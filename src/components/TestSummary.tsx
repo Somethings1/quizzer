@@ -5,7 +5,6 @@ import {
     Space,
     Card,
     Divider,
-    message,
     Timeline,
     Empty,
 } from 'antd';
@@ -17,6 +16,7 @@ import { extractJson, uploadToGeminiAndGenerateQuiz } from '../utils/api';
 import { fixSmartQuotes } from '../utils/repairJson';
 import { QuizQuestion, TestSession } from '../types';
 import JsonFixerModal from './JsonFixerModal';
+import { getMessageApi } from '../utils/messageProvider';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -44,6 +44,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated }) =>
     const [isLoading, setIsLoading] = useState(false);
 
     const latest = test.attempts[test.attempts.length - 1];
+    const message = getMessageApi();
 
     const handleNewTestSameFile = async () => {
         if (!test.fileContent) {

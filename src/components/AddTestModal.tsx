@@ -19,6 +19,7 @@ import JsonFixerModal from './JsonFixerModal';
 import { v4 as uuidv4 } from 'uuid';
 import type { QuizQuestion } from '../types';
 import { extractTextFromPdf } from '../utils/pdf';
+import { getMessageApi } from '../utils/messageProvider';
 
 const { Dragger } = Upload;
 const { Paragraph, Text, Title } = Typography;
@@ -42,6 +43,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
     const [startTime, setStartTime] = useState<number | null>(null);
     const [elapsed, setElapsed] = useState<number>(0);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const message = getMessageApi();
 
 
     useEffect(() => {
@@ -187,9 +189,9 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                 onOk={handleGenerate}
                 onCancel={() => {
                     if (abortControllerRef.current) {
-                        abortControllerRef.current.abort(); // Kill the fetch
+                        abortControllerRef.current.abort();
                     }
-                    onClose(); // Then close modal
+                    onClose();
                 }}
                 okText="Create Test"
                 okButtonProps={{ disabled: !canGenerate }}
