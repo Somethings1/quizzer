@@ -22,7 +22,7 @@ import { extractTextFromPdf } from '../utils/pdf';
 import { getMessageApi } from '../utils/messageProvider';
 
 const { Dragger } = Upload;
-const { Paragraph, Text, Title } = Typography;
+const { Paragraph, Text } = Typography;
 
 interface Props {
     onClose: () => void;
@@ -31,6 +31,7 @@ interface Props {
 
 const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
     const [fileName, setFileName] = useState('');
+    const [testName, setTestName] = useState('');
     const [fileContent, setFileContent] = useState<string | null>(null);
     const [manualJson, setManualJson] = useState('');
     const [mode, setMode] = useState<'upload' | 'manual'>('upload');
@@ -45,24 +46,22 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
     const abortControllerRef = useRef<AbortController | null>(null);
     const message = getMessageApi();
 
-
     useEffect(() => {
         let interval: NodeJS.Timeout;
 
         if (startTime) {
             interval = setInterval(() => {
-                const newEllapsed = Math.floor((Date.now() - startTime) / 1000);
-                setElapsed(newEllapsed);
-                setStatusMessage(mode === 'upload' ? `Thinking (${newEllapsed})s` : 'Parsing pasted JSON...');
+                const newElapsed = Math.floor((Date.now() - startTime) / 1000);
+                setElapsed(newElapsed);
+                setStatusMessage(mode === 'upload' ? `Thinking (${newElapsed})s` : 'Parsing pasted JSON...');
             }, 1000);
         }
 
-        return () => {
-            clearInterval(interval);
-        };
+        return () => clearInterval(interval);
     }, [startTime]);
 
     const handleFileUpload = async (file: RcFile) => {
+        setFileName(file.name);
         const ext = file.name.split('.').pop()?.toLowerCase();
         const isPdf = file.type === 'application/pdf' || ext === 'pdf';
         const isJson = file.type === 'application/json' || ext === 'json';
@@ -72,7 +71,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
             return false;
         }
 
-        setFileName(file.name.replace(/\.[^/.]+$/, ''));
+        setTestName(file.name.replace(/\.[^/.]+$/, ''));
 
         if (isPdf) {
             try {
@@ -97,17 +96,9 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                     return false;
                 }
 
-                const newId = uuidv4();
-                await db.tests.add({
-                    id: newId,
-                    name: fileName || 'Untitled Test',
-                    createdAt: Date.now(),
-                    questions: parsed,
-                    attempts: [],
-                });
-
-                message.success('Test created!');
-                onCreated(newId);
+                setManualJson(fixed); // reuse manual flow
+                setFileContent(fixed); // just so the create button is enabled
+                setStatusMessage(null);
             } catch (err) {
                 console.error('[JSON Upload Error]', err);
                 message.error('Failed to read JSON file.');
@@ -131,15 +122,28 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
 
             if (mode === 'upload') {
                 if (!fileContent) return;
-                const result = await uploadToGeminiAndGenerateQuiz(fileContent, controller.signal);
-                setStatusMessage('Cleaning and parsing Gemini response...');
-                const fixed = fixSmartQuotes(result);
-                parsed = extractJson<QuizQuestion[]>(fixed);
 
-                if (!parsed) {
-                    setJsonError('Failed to parse Gemini output');
-                    setRawJson(fixed);
-                    return;
+                if (manualJson) {
+                    // JSON branch
+                    const fixed = fixSmartQuotes(manualJson);
+                    parsed = extractJson<QuizQuestion[]>(fixed);
+                    if (!parsed) {
+                        setJsonError('Failed to parse uploaded JSON');
+                        setRawJson(fixed);
+                        return;
+                    }
+                } else {
+                    // PDF branch
+                    const result = await uploadToGeminiAndGenerateQuiz(fileContent, controller.signal);
+                    setStatusMessage('Cleaning and parsing response...');
+                    const fixed = fixSmartQuotes(result);
+                    parsed = extractJson<QuizQuestion[]>(fixed);
+
+                    if (!parsed) {
+                        setJsonError('Failed to parse output');
+                        setRawJson(fixed);
+                        return;
+                    }
                 }
             } else {
                 const fixed = fixSmartQuotes(manualJson);
@@ -155,7 +159,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
             const newId = uuidv4();
             await db.tests.add({
                 id: newId,
-                name: fileName || 'Untitled Test',
+                name: testName || 'Untitled Test',
                 createdAt: Date.now(),
                 questions: parsed,
                 attempts: [],
@@ -214,8 +218,8 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                 </div>
 
                 <Input
-                    value={fileName}
-                    onChange={(e) => setFileName(e.target.value)}
+                    value={testName}
+                    onChange={(e) => setTestName(e.target.value)}
                     placeholder="Test title"
                     style={{
                         marginBottom: 20,
@@ -226,7 +230,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                 />
 
                 {mode === 'upload' ? (
-                    fileContent ? (
+                    fileContent || (manualJson && testName) ? (
                         <div
                             style={{
                                 border: '1px solid #e0e0e0',
@@ -237,14 +241,14 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                                 textAlign: 'center',
                             }}
                         >
-                            <Text strong>{fileName}.pdf</Text>
-                            <Paragraph type="secondary">PDF uploaded and ready.</Paragraph>
+                            <Text strong>{fileName}</Text>
+                            <Paragraph type="secondary">File <Text code>{fileName}</Text> is uploaded and ready.</Paragraph>
                             <Button
                                 size="small"
                                 danger
                                 onClick={() => {
                                     setFileContent(null);
-                                    setFileName('');
+                                    setTestName('');
                                 }}
                             >
                                 Remove File
@@ -266,17 +270,15 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                             </p>
                             <p className="ant-upload-text">
                                 Click or drag a PDF or JSON file to upload.
-                                <Tooltip title={
-                                    <div>
-                                        <p className="ant-upload-text">
-                                            PDF files will be sent to our model to generate questions based on its content.
-                                        </p>
-                                        <p className="ant-upload-text">
-                                            JSON files will be used to create a test and must follow Quizzer format. Use it if you've exported a test to JSON.
-                                        </p>
-                                    </div>
-                                }>
-                                    <InfoCircleOutlined style={{ marginLeft: 8 }}/>
+                                <Tooltip
+                                    title={
+                                        <div>
+                                            <p>PDF: Extracts questions from text.</p>
+                                            <p>JSON: Creates test from exported format.</p>
+                                        </div>
+                                    }
+                                >
+                                    <InfoCircleOutlined style={{ marginLeft: 8 }} />
                                 </Tooltip>
                             </p>
                         </Dragger>
@@ -318,7 +320,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                             db.tests
                                 .add({
                                     id: newId,
-                                    name: fileName || 'Untitled Test',
+                                    name: testName || 'Untitled Test',
                                     createdAt: Date.now(),
                                     questions: parsed,
                                     attempts: [],
