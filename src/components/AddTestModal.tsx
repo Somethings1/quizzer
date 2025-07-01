@@ -322,6 +322,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
 
     const separateTab = (
         <div>
+        <p>Upload multiple files of PDF or JSON format to create a test for each of them.</p>
             <Dragger
                 multiple
                 beforeUpload={handleSeparateUpload}
@@ -372,6 +373,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
 
     const multipleTab = (
         <div>
+        <p>Upload multiple PDF to combine them and get a test from contents of all files.</p>
              <Input
                 value={multipleTestName}
                 onChange={(e) => setMultipleTestName(e.target.value)}
@@ -441,7 +443,7 @@ const AddTestModal: React.FC<Props> = ({ onClose, onCreated }) => {
                     <Tabs.TabPane tab="Separate files" key="separate">
                         {separateTab}
                     </Tabs.TabPane>
-                    <Tabs.TabPane tab="Multiple files at once" key="multiple">
+                    <Tabs.TabPane tab="Combine files" key="multiple">
                         {multipleTab}
                     </Tabs.TabPane>
                 </Tabs>
