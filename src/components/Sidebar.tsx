@@ -13,7 +13,7 @@ import {
 import { db, StoredTest } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getMessageApi } from '../utils/messageProvider';
-import JSZip from 'jszip'; // Make sure to run: npm install jszip
+import JSZip from 'jszip';
 
 const { Title } = Typography;
 

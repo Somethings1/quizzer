@@ -6,11 +6,11 @@ import { json } from '@codemirror/lang-json';
 interface Props {
     rawJson: string;
     errorMessage: string;
-    onTryAgain: (fixed: string) => void;
+    onFixed: (fixed: string) => void;
     onClose: () => void;
 }
 
-const JsonFixerModal: React.FC<Props> = ({ rawJson, errorMessage, onTryAgain, onClose }) => {
+const JsonFixerModal: React.FC<Props> = ({ rawJson, errorMessage, onFixed, onClose }) => {
     const [text, setText] = useState(rawJson);
 
     return (
@@ -18,7 +18,7 @@ const JsonFixerModal: React.FC<Props> = ({ rawJson, errorMessage, onTryAgain, on
             open
             title="JSON Parsing Failed"
             onCancel={onClose}
-            onOk={() => onTryAgain(text)}
+            onOk={() => onFixed(text)}
             okText="Try Again"
         >
             <p>Error: {errorMessage}</p>
